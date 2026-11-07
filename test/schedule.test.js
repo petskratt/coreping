@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { runLimitReached, waitAfterRound, waitingLine } from '../src/lib/schedule.js';
-import { appendSamples, clampTraceLimits, durationHoursLabel, sanitizeState, SAMPLE_CAP } from '../src/lib/store.js';
+import { appendSamples, clampTraceLimits, clipForwardHops, durationHoursLabel, sanitizeState, SAMPLE_CAP } from '../src/lib/store.js';
 
 test('the next round waits out whatever part of the interval is left', () => {
   assert.equal(waitAfterRound(1000, 1000, 30000), 30000);
@@ -63,6 +63,23 @@ test('stored state drops junk and caps samples', () => {
   const kept = sanitizeState({ intervalSec: 600, maxDurationSec: 24 * 3600 });
   assert.equal(kept.intervalSec, 600);
   assert.equal(withBreaks.samples.length, 1);
+});
+
+test('path steps default to 4 forward nodes and a longer path is cut', () => {
+  const state = sanitizeState({
+    targets: [{ id: 'a', hops: ['aa', 'bb', 'cc', 'dd', 'ee'] }],
+  });
+  assert.equal(state.pathSteps, 4);
+  assert.deepEqual(state.targets[0].hops, ['aa', 'bb', 'cc', 'dd']);
+  const deeper = sanitizeState({
+    pathSteps: 6,
+    targets: [{ id: 'a', hops: ['aa', 'bb', 'cc', 'dd', 'ee', 'ff', '11'] }],
+  });
+  assert.equal(deeper.pathSteps, 6);
+  assert.deepEqual(deeper.targets[0].hops, ['aa', 'bb', 'cc', 'dd', 'ee', 'ff']);
+  assert.equal(sanitizeState({ pathSteps: 9 }).pathSteps, 4);
+  assert.equal(sanitizeState({ pathSteps: '4' }).pathSteps, 4);
+  assert.deepEqual(clipForwardHops(['aa', 'bb', 'cc'], 8), ['aa', 'bb', 'cc']);
 });
 
 test('appendSamples keeps the newest points', () => {

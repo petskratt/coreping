@@ -13,14 +13,15 @@
   import { formatLoss, formatSnr, formatTimestamp, summarize } from './lib/stats.js';
   import { exportBaseName } from './lib/filename.js';
   import { sampleBoard } from './lib/sample.js';
-  import { appendSamples, clampTraceLimits, DEFAULT_DURATION_SEC, DEFAULT_HASH_BYTES, DEFAULT_INTERVAL_SEC, durationHoursLabel, loadState, saveState } from './lib/store.js';
-  import { traceRound } from './lib/trace.js';
+  import { appendSamples, clampTraceLimits, clipForwardHops, DEFAULT_DURATION_SEC, DEFAULT_HASH_BYTES, DEFAULT_INTERVAL_SEC, DEFAULT_PATH_STEPS, durationHoursLabel, loadState, MAX_CONCURRENT_TRACES, PATH_STEP_CHOICES, saveState } from './lib/store.js';
+  import { activeTraces, traceRound } from './lib/trace.js';
 
   const saved = loadState();
 
   let intervalSec = $state(saved.intervalSec);
   let hashBytes = $state(saved.hashBytes);
   let maxDurationSec = $state(saved.maxDurationSec);
+  let pathSteps = $state(saved.pathSteps);
   let targets = $state(saved.targets);
   let samples = $state(saved.samples);
   let breaks = $state(saved.breaks);
@@ -62,6 +63,7 @@
       intervalSec,
       hashBytes,
       maxDurationSec,
+      pathSteps,
       targets: targets.map((target) => ({ id: target.id, enabled: target.enabled, hops: [...target.hops] })),
       samples: samples.slice(),
       breaks: breaks.slice(),
@@ -89,6 +91,8 @@
   const targetsVisible = $derived(samples.length === 0 || targetsOpen);
   const clearLabel = $derived(samples.length ? 'Clear samples' : 'Clear targets');
   const longRun = $derived(maxDurationSec > DEFAULT_DURATION_SEC);
+  const roundPlan = $derived(activeTraces(targets, pathSteps));
+  const tracedIds = $derived(new Set(roundPlan.targets.map((target) => target.id)));
 
   function nameOf(hex) {
     const book = demo ? sample.names : names;
@@ -188,21 +192,34 @@
     target.hops = target.hops.filter((_, hopIndex) => hopIndex !== index);
   }
 
+  function pathLimitNote(steps) {
+    return `Path is limited to ${steps} forward ${steps === 1 ? 'node' : 'nodes'}.`;
+  }
+
   function applyHops(target, incoming, { replace = false } = {}) {
     const base = replace ? [] : target.hops;
     const result = appendHops(base, incoming);
-    const added = result.hops.length - base.length;
+    const hops = clipForwardHops(result.hops, pathSteps);
+    const limited = hops.length < result.hops.length;
+    const added = hops.length - base.length;
     if (!added && result.cutAt) {
       fieldError = { id: '', message: '' };
       fieldNote = { id: target.id, message: `${nameOf(result.cutAt)} is already on this path.` };
       return;
     }
-    target.hops = result.hops;
-    remember(result.hops);
+    if (!added && limited) {
+      fieldError = { id: '', message: '' };
+      fieldNote = { id: target.id, message: pathLimitNote(pathSteps) };
+      return;
+    }
+    target.hops = hops;
+    remember(hops);
     fieldError = { id: '', message: '' };
-    fieldNote = result.cutAt
-      ? { id: target.id, message: `Removed repeated hops starting at ${nameOf(result.cutAt)}.` }
-      : { id: '', message: '' };
+    fieldNote = limited
+      ? { id: target.id, message: pathLimitNote(pathSteps) }
+      : result.cutAt
+        ? { id: target.id, message: `Removed repeated hops starting at ${nameOf(result.cutAt)}.` }
+        : { id: '', message: '' };
   }
 
   function onDraft(target, value) {
@@ -292,7 +309,7 @@
         tracingText = '';
         samples = appendSamples(samples, [event.sample]);
         statusDetail = completedLine(event.sample, nameOf);
-      });
+      }, pathSteps);
       if (myToken !== token) return;
       if (!batch.length) statusDetail = 'No targets to trace.';
     } catch (err) {
@@ -356,6 +373,7 @@
     intervalSec = state.intervalSec;
     hashBytes = state.hashBytes;
     maxDurationSec = state.maxDurationSec;
+    pathSteps = state.pathSteps;
     targets = state.targets;
     samples = state.samples;
     breaks = state.breaks;
@@ -537,6 +555,22 @@
     settingsOpen = false;
   }
 
+  function choosePathSteps(value) {
+    const steps = PATH_STEP_CHOICES.includes(Number(value)) ? Number(value) : DEFAULT_PATH_STEPS;
+    pathSteps = steps;
+    let noted = '';
+    for (const target of targets) {
+      if (target.hops.length <= steps) continue;
+      target.hops = clipForwardHops(target.hops, steps);
+      if (!noted) noted = target.id;
+    }
+    if (noted) {
+      fieldError = { id: '', message: '' };
+      fieldNote = { id: noted, message: pathLimitNote(steps) };
+    }
+    settingsOpen = false;
+  }
+
   function clearBoard() {
     if (samples.length) {
       samples = [];
@@ -553,6 +587,7 @@
     intervalSec = DEFAULT_INTERVAL_SEC;
     hashBytes = DEFAULT_HASH_BYTES;
     maxDurationSec = DEFAULT_DURATION_SEC;
+    pathSteps = DEFAULT_PATH_STEPS;
     statusDetail = 'Targets cleared.';
   }
 
@@ -562,7 +597,7 @@
   <header class="top">
     <div class="brand">
       <h1><img class="mark" src="{import.meta.env.BASE_URL}favicon.svg" alt="" /> Coreping</h1>
-      <p class="lede">Check MeshCore node-to-node SNR and loss with periodic traces. Connect to your companion, select a single target to ping, or repeaters to trace the connections between them.</p>
+      <p class="lede">Check MeshCore node-to-node SNR and loss with periodic traces. Connect to your companion, select a single target to ping, or repeaters to trace the connections between them. Max duration and path depth are limited, and the shortest interval depends on the max duration, so a scan does not overuse the mesh.</p>
       {#if statusDetail}
         <p class="status"><span class="prompt" aria-hidden="true">&gt;</span> {statusDetail}</p>
       {/if}
@@ -635,6 +670,14 @@
                 <option value={48 * 3600}>48 h</option>
               </select>
             </label>
+            <label title="Nodes walked forward. The way back is added. Default is 4, and 8 is the longest.">
+              Path steps
+              <select value={pathSteps} onchange={(event) => choosePathSteps(event.currentTarget.value)}>
+                {#each PATH_STEP_CHOICES as steps (steps)}
+                  <option value={steps}>{steps === 1 ? '1 node' : `${steps} nodes`}</option>
+                {/each}
+              </select>
+            </label>
             <label title="1, 2, or 4 bytes. 3-byte prefixes cannot be traced.">
               Hash
               <select value={hashBytes} onchange={(event) => { hashBytes = Number(event.currentTarget.value); settingsOpen = false; }}>
@@ -658,8 +701,18 @@
   <div class="columns" class:sample={demo} inert={demo}>
     <section class="panel">
       <h2>Targets</h2>
+      {#if !demo && roundPlan.skipped}
+        <p class="hint">{MAX_CONCURRENT_TRACES} traces run at a time. {roundPlan.skipped} {roundPlan.skipped === 1 ? 'target is' : 'targets are'} left out of the round.</p>
+      {/if}
       {#each (demo ? sample.targets : targets) as target (target.id)}
-        <div class="target" class:selected={target.id === selectedId} onfocusin={() => selectTarget(target.id)}>
+        {@const waiting = !demo && target.enabled && target.hops.length > 0 && !tracedIds.has(target.id)}
+        <div
+          class="target"
+          class:selected={target.id === selectedId}
+          class:idle={waiting}
+          title={waiting ? `${MAX_CONCURRENT_TRACES} traces run at a time. This one waits until a traced target is turned off.` : undefined}
+          onfocusin={() => selectTarget(target.id)}
+        >
           <label class="inline">
             <input type="checkbox" bind:checked={target.enabled} aria-label="Trace this target" />
           </label>
@@ -819,4 +872,8 @@
       {/if}
     </div>
   </section>
+
+  <footer class="site-footer">
+    <a href="https://github.com/petskratt/coreping" target="_blank" rel="noopener noreferrer">github.com/petskratt/coreping</a>
+  </footer>
 </main>

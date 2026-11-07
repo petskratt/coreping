@@ -1,5 +1,6 @@
 import Constants from '@liamcottle/meshcore.js/src/constants.js';
 import { expandRoundTrip, flagsForHashBytes, parsePrefixList, prefixesToBytes } from './path.js';
+import { clipForwardHops, DEFAULT_PATH_STEPS, MAX_CONCURRENT_TRACES } from './store.js';
 
 export const TRACE_COMMAND = 0x24;
 export const EXTRA_TIMEOUT_MS = 4000;
@@ -141,11 +142,26 @@ export function tracePath(conn, pathBytes, hashBytes, extraTimeoutMillis = EXTRA
   });
 }
 
-export async function traceRound(conn, targets, hashBytes, roundTrip, shouldStop = () => false, onUpdate = () => {}) {
+// The first `limit` enabled paths, each cut to the forward-step setting.
+export function activeTraces(targets, pathSteps = DEFAULT_PATH_STEPS, limit = MAX_CONCURRENT_TRACES) {
+  const cap = Number.isInteger(limit) && limit > 0 ? limit : MAX_CONCURRENT_TRACES;
+  const selected = [];
+  let skipped = 0;
+  for (const target of targets || []) {
+    if (!target?.enabled || !Array.isArray(target.hops) || target.hops.length === 0) continue;
+    if (selected.length >= cap) {
+      skipped += 1;
+      continue;
+    }
+    selected.push({ ...target, hops: clipForwardHops(target.hops, pathSteps) });
+  }
+  return { targets: selected, skipped };
+}
+
+export async function traceRound(conn, targets, hashBytes, roundTrip, shouldStop = () => false, onUpdate = () => {}, pathSteps = DEFAULT_PATH_STEPS) {
   const samples = [];
-  for (const target of targets) {
+  for (const target of activeTraces(targets, pathSteps).targets) {
     if (shouldStop()) break;
-    if (!target.enabled || target.hops.length === 0) continue;
     const sent = expandRoundTrip(target.hops, roundTrip);
     const base = {
       t: Date.now(),

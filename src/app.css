@@ -123,6 +123,8 @@ header h1 {
 
 .lede { margin: 0.2rem 0 0; }
 
+.hint { margin: 0 0 0.6rem; }
+
 @media (min-width: 1000px) {
   .lede { max-width: min(50vw, 100%); }
 }
@@ -303,6 +305,8 @@ label.inline {
 }
 
 .target.selected { border-color: var(--accent); }
+
+.target.idle { opacity: 0.55; }
 
 .target > .inline { grid-column: 1; grid-row: 1; }
 
@@ -531,3 +535,13 @@ label.inline {
 }
 
 .swatch { display: block; }
+
+.site-footer {
+  margin-top: 1.75rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.site-footer a { color: inherit; }
