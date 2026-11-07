@@ -33,7 +33,6 @@ export async function loadIdentity(conn) {
   const contacts = await conn.getContacts();
   return {
     selfName: (self?.name || '').trim() || 'me',
-    deviceName: conn.bleDevice?.name || '',
     contacts: (contacts || []).map((contact) => ({
       name: (contact.advName || '').trim() || 'unnamed',
       publicKey: Array.from(contact.publicKey || []),

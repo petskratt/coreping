@@ -21,3 +21,11 @@ npm run dev
 ```
 
 `npm run build` writes the site into `docs/`. GitHub Pages can serve that folder from the `main` branch.
+
+## Icon
+
+Ping by Trimanggolo Mulyo from [Noun Project](https://thenounproject.com/browse/icons/term/ping/) (CC BY 3.0).
+
+## License
+
+Coreping is licensed under the Apache License, Version 2.0.

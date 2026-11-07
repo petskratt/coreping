@@ -32,7 +32,6 @@
   let connState = $state('off');
   let statusDetail = $state('');
   let selfName = $state(saved.selfName);
-  let deviceName = $state('');
   let contacts = $state([]);
   let names = $state(saved.names);
   let contactFilter = $state('');
@@ -93,13 +92,22 @@
   const longRun = $derived(maxDurationSec > DEFAULT_DURATION_SEC);
   const roundPlan = $derived(activeTraces(targets, pathSteps));
   const tracedIds = $derived(new Set(roundPlan.targets.map((target) => target.id)));
+  // The dim sample stands in until this browser has a path or a saved trace.
+  const shown = $derived(demo ? sample : {
+    targets,
+    samples,
+    breaks,
+    intervalSec,
+    hashBytes,
+    names,
+    selfName,
+    contacts,
+  });
 
   function nameOf(hex) {
-    const book = demo ? sample.names : names;
-    const me = demo ? sample.selfName : selfName;
-    if (hex == null) return me || 'me';
+    if (hex == null) return shown.selfName || 'me';
     const key = String(hex).toLowerCase();
-    return book[key] || hex;
+    return shown.names[key] || hex;
   }
 
   function remember(prefixes) {
@@ -114,8 +122,8 @@
     if (changed) names = next;
   }
 
-  const series = $derived(buildSeries(targets, samples, true));
-  const viewSeries = $derived(demo ? buildSeries(sample.targets, sample.samples, true) : series);
+  const series = $derived(buildSeries(targets, samples));
+  const viewSeries = $derived(demo ? buildSeries(shown.targets, shown.samples) : series);
   const colorMap = $derived(assignColorIndices(remotePairKeys(series), colorIndex));
   const viewColorMap = $derived(assignColorIndices(remotePairKeys(viewSeries), demo ? {} : colorIndex));
 
@@ -137,17 +145,17 @@
   const statsRows = $derived(drawn
     .map((line) => ({ ...line, summary: summarize(line.values) }))
     .filter((line) => line.summary?.attempts));
-  const consoleLines = $derived([...(demo ? sample.samples : samples)]
+  const consoleLines = $derived([...shown.samples]
     .sort((a, b) => b.t - a.t)
-    .map((sample) => ({
-      key: `${sample.t}:${sample.targetId}`,
-      text: completedLine(sample, nameOf),
+    .map((entry) => ({
+      key: `${entry.t}:${entry.targetId}`,
+      text: completedLine(entry, nameOf),
     })));
-  const listedContacts = $derived(demo ? sample.contacts : contacts
+  const listedContacts = $derived(shown.contacts
     .filter((contact) => {
       const query = contactFilter.trim().toLowerCase();
       if (!query) return true;
-      const prefix = contactPrefix(contact, hashBytes);
+      const prefix = contactPrefix(contact, shown.hashBytes);
       return contact.name.toLowerCase().includes(query) || prefix.includes(query);
     })
     .sort(byLastSeen));
@@ -299,7 +307,7 @@
     const width = hashBytes;
     busy = true;
     try {
-      const batch = await traceRound(conn, snapshot, width, true, () => myToken !== token, (event) => {
+      const batch = await traceRound(conn, snapshot, width, () => myToken !== token, (event) => {
         if (myToken !== token) return;
         if (event.phase === 'running') {
           tracingText = tracingLine(event.sent, nameOf);
@@ -326,19 +334,25 @@
     const summaryRows = labeled
       .map((line) => ({ label: line.label, summary: summarize(line.values) }))
       .filter((row) => row.summary?.attempts);
+    const targetById = new Map(targets.map((target) => [target.id, target]));
+    const sampleByKey = new Map();
+    for (const entry of samples) {
+      const key = `${entry.t}:${entry.targetId}`;
+      if (!sampleByKey.has(key)) sampleByKey.set(key, entry);
+    }
     const sampleRows = [];
     for (const line of labeled) {
       for (const point of line.values) {
-        const target = targets.find((item) => item.id === point.targetId);
+        const target = targetById.get(point.targetId);
         const targetName = target?.hops?.length
           ? target.hops.map((hop) => nameOf(hop)).join(' -> ')
           : (point.targetId || line.key);
-        const sample = samples.find((item) => item.t === point.t && item.targetId === point.targetId);
+        const entry = sampleByKey.get(`${point.t}:${point.targetId}`);
         sampleRows.push({
           t: point.t,
           hopIndex: point.hopIndex ?? 0,
           target: targetName,
-          path: (sample?.sent || []).join(','),
+          path: (entry?.sent || []).join(','),
           hop: line.label,
           direction: point.dir || line.dir,
           snr: point.snr,
@@ -515,7 +529,6 @@
       });
       const identity = await loadIdentity(conn);
       selfName = identity.selfName;
-      deviceName = identity.deviceName;
       contacts = identity.contacts;
       names = refreshNames(names, identity.contacts, usedPrefixes(targets, samples));
       connState = 'on';
@@ -704,7 +717,7 @@
       {#if !demo && roundPlan.skipped}
         <p class="hint">{MAX_CONCURRENT_TRACES} traces run at a time. {roundPlan.skipped} {roundPlan.skipped === 1 ? 'target is' : 'targets are'} left out of the round.</p>
       {/if}
-      {#each (demo ? sample.targets : targets) as target (target.id)}
+      {#each shown.targets as target (target.id)}
         {@const waiting = !demo && target.enabled && target.hops.length > 0 && !tracedIds.has(target.id)}
         <div
           class="target"
@@ -791,7 +804,7 @@
                 <button class="textish add-name" title="Add to the selected path" onclick={() => appendContact(contact)}>
                   <span class="plus" aria-hidden="true">+</span>
                   <span class="contact-name">{contact.name}</span>
-                  <span class="contact-meta">{contactPrefix(contact, demo ? sample.hashBytes : hashBytes)}</span>
+                  <span class="contact-meta">{contactPrefix(contact, shown.hashBytes)}</span>
                 </button>
                 <button onclick={() => useRoute(contact)} title="Replace the selected target with this contact's saved route">Use route</button>
               </div>
@@ -808,7 +821,7 @@
 
   <section class="panel" class:sample={demo} inert={demo}>
     <h2>SNR</h2>
-    <LineChart series={drawn} breaks={demo ? sample.breaks : breaks} intervalMs={(demo ? sample.intervalSec : intervalSec) * 1000} />
+    <LineChart series={drawn} breaks={shown.breaks} intervalMs={shown.intervalSec * 1000} />
     <div class="legend">
       {#each viewSeries as line (line.key)}
         {@const on = isVisible(line, demo ? {} : visibility)}

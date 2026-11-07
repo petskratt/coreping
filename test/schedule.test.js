@@ -39,7 +39,6 @@ test('stored state drops junk and caps samples', () => {
   const state = sanitizeState({
     intervalSec: 15,
     hashBytes: 3,
-    roundTrip: false,
     targets: [
       { id: 'a', hops: ['ab12', 4], enabled: false },
       { hops: ['nope'] },
@@ -50,7 +49,6 @@ test('stored state drops junk and caps samples', () => {
   assert.equal(state.intervalSec, 15);
   assert.equal(state.maxDurationSec, 4 * 3600);
   assert.equal(state.hashBytes, 2);
-  assert.equal(state.roundTrip, false);
   assert.deepEqual(state.targets, [{ id: 'a', hops: ['ab12'], enabled: false }]);
   assert.equal(state.samples.length, 1);
   assert.deepEqual(state.breaks, []);

@@ -20,3 +20,4 @@
 - Targets, beside Connect, shows and hides the target and contact list. It stays inactive until a trace has been saved, because until then that list is the page. With the radio off and nothing saved, a dim sample shows two paths, three runs, and 100 traces. It is not saved.
 - The × clears samples and stays active. The next click clears the targets and resets interval, hash, path steps, and max duration to 60 seconds, 2 bytes, 4 forward nodes, and 4 hours.
 - Export writes CSV (summary, then one row per hop with a local timestamp) or a JSON copy of the save. The file name is the last node of each target, lowercase ASCII, for example `coreping-nova-paldiski_2026-11-07-20-46-19.csv`. Import JSON merges into the current save: the same path stays one target, a trace already stored is kept, and local interval and duration stay.
+- Coreping is Apache License 2.0. The ping mark is credited in the readme: Ping by Trimanggolo Mulyo, Noun Project, CC BY 3.0.

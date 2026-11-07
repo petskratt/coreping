@@ -66,8 +66,8 @@ export function seriesLabel(series, nameOf) {
   return `${hearer} heard ${prev}`;
 }
 
-function blankTrace(target, roundTrip) {
-  const sent = expandRoundTrip(target.hops, roundTrip);
+function blankTrace(target) {
+  const sent = expandRoundTrip(target.hops);
   return describeTrace({
     targetId: target.id,
     outboundCount: target.hops.length,
@@ -77,7 +77,7 @@ function blankTrace(target, roundTrip) {
   });
 }
 
-export function buildSeries(targets, samples, roundTrip) {
+export function buildSeries(targets, samples) {
   const byKey = new Map();
 
   const ensure = (point) => {
@@ -112,7 +112,7 @@ export function buildSeries(targets, samples, roundTrip) {
 
   for (const target of targets) {
     if (!target.hops?.length) continue;
-    for (const point of blankTrace(target, roundTrip)) ensure(point);
+    for (const point of blankTrace(target)) ensure(point);
   }
 
   const ordered = [...samples].sort((a, b) => a.t - b.t);

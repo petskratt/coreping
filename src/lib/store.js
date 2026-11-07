@@ -43,7 +43,6 @@ export function defaultState() {
     hashBytes: DEFAULT_HASH_BYTES,
     maxDurationSec: DEFAULT_DURATION_SEC,
     pathSteps: DEFAULT_PATH_STEPS,
-    roundTrip: true,
     targets: [],
     samples: [],
     breaks: [],
@@ -65,7 +64,6 @@ export function sanitizeState(raw) {
   if (raw.hashBytes === 1 || raw.hashBytes === 2 || raw.hashBytes === 4) {
     state.hashBytes = raw.hashBytes;
   }
-  if (typeof raw.roundTrip === 'boolean') state.roundTrip = raw.roundTrip;
 
   if (Array.isArray(raw.targets)) {
     state.targets = raw.targets
@@ -120,7 +118,5 @@ export function loadState() {
 
 export function saveState(state) {
   if (typeof localStorage === 'undefined') return;
-  const clean = sanitizeState(state);
-  clean.samples = appendSamples([], clean.samples);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizeState(state)));
 }

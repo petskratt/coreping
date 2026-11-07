@@ -108,9 +108,9 @@ export function appendHops(existing, incoming) {
 
 // A one-hop trace already comes back: the target retransmits and this radio hears it.
 // Longer paths are walked back, without repeating the far node. A repeated node ends the outbound list first.
-export function expandRoundTrip(hops, roundTrip = true) {
+export function expandRoundTrip(hops) {
   const outbound = appendHops([], hops).hops;
-  if (!roundTrip || outbound.length < 2) return outbound;
+  if (outbound.length < 2) return outbound;
   return outbound.concat(outbound.slice(0, -1).reverse());
 }
 

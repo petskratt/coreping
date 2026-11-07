@@ -142,14 +142,13 @@ export function tracePath(conn, pathBytes, hashBytes, extraTimeoutMillis = EXTRA
   });
 }
 
-// The first `limit` enabled paths, each cut to the forward-step setting.
-export function activeTraces(targets, pathSteps = DEFAULT_PATH_STEPS, limit = MAX_CONCURRENT_TRACES) {
-  const cap = Number.isInteger(limit) && limit > 0 ? limit : MAX_CONCURRENT_TRACES;
+// The first ten enabled paths. Each one is cut to the forward-step setting.
+export function activeTraces(targets, pathSteps = DEFAULT_PATH_STEPS) {
   const selected = [];
   let skipped = 0;
   for (const target of targets || []) {
     if (!target?.enabled || !Array.isArray(target.hops) || target.hops.length === 0) continue;
-    if (selected.length >= cap) {
+    if (selected.length >= MAX_CONCURRENT_TRACES) {
       skipped += 1;
       continue;
     }
@@ -158,11 +157,11 @@ export function activeTraces(targets, pathSteps = DEFAULT_PATH_STEPS, limit = MA
   return { targets: selected, skipped };
 }
 
-export async function traceRound(conn, targets, hashBytes, roundTrip, shouldStop = () => false, onUpdate = () => {}, pathSteps = DEFAULT_PATH_STEPS) {
+export async function traceRound(conn, targets, hashBytes, shouldStop = () => false, onUpdate = () => {}, pathSteps = DEFAULT_PATH_STEPS) {
   const samples = [];
   for (const target of activeTraces(targets, pathSteps).targets) {
     if (shouldStop()) break;
-    const sent = expandRoundTrip(target.hops, roundTrip);
+    const sent = expandRoundTrip(target.hops);
     const base = {
       t: Date.now(),
       targetId: target.id,

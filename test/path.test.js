@@ -58,9 +58,8 @@ test('flags are the shift for 1, 2, and 4 byte hashes', () => {
 });
 
 test('round trip appends the reverse path without repeating the far node', () => {
-  assert.deepEqual(expandRoundTrip(['aa', 'bb', 'cc'], true), ['aa', 'bb', 'cc', 'bb', 'aa']);
-  assert.deepEqual(expandRoundTrip(['aa'], true), ['aa']);
-  assert.deepEqual(expandRoundTrip(['aa', 'bb'], false), ['aa', 'bb']);
+  assert.deepEqual(expandRoundTrip(['aa', 'bb', 'cc']), ['aa', 'bb', 'cc', 'bb', 'aa']);
+  assert.deepEqual(expandRoundTrip(['aa']), ['aa']);
   assert.deepEqual(expandRoundTrip(['aa', 'bb', 'cc', 'bb', 'aa']), ['aa', 'bb', 'cc', 'bb', 'aa']);
 });
 

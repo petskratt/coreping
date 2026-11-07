@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { previewSession } from '../src/lib/preview.js';
+import { sampleBoard } from '../src/lib/sample.js';
 import { buildSeries, describeTrace, isVisible, seriesLabel } from '../src/lib/series.js';
 
 const multi = {
@@ -62,7 +62,7 @@ test('a failed sample breaks the line instead of connecting through it', () => {
     { t: 2, targetId: 'rep', outboundCount: 2, sent: multi.sent, snrs: null, lastSnr: null, error: 'timeout' },
     { t: 3, ...multi, snrs: [8, -2, 1], lastSnr: 7, error: null },
   ];
-  const far = buildSeries(targets, samples, true).find((series) => series.hearerHex === 'cd34' && series.prevHex === 'ab12');
+  const far = buildSeries(targets, samples).find((series) => series.hearerHex === 'cd34' && series.prevHex === 'ab12');
   assert.deepEqual(far.values.map((point) => point.snr), [-3, null, -2]);
 });
 
@@ -75,7 +75,7 @@ test('the same radio link from two targets is one series', () => {
     { t: 1, targetId: 'far', outboundCount: 2, sent: ['ab12', 'cd34', 'ab12'], snrs: [9, -3, 1], lastSnr: 8, error: null },
     { t: 2, targetId: 'side', outboundCount: 2, sent: ['ab12', 'ef56', 'ab12'], snrs: [7, 2, 0], lastSnr: 6, error: null },
   ];
-  const lines = buildSeries(targets, samples, true);
+  const lines = buildSeries(targets, samples);
   const uplink = lines.filter((line) => line.hearerHex === 'ab12' && line.prevHex == null);
   assert.equal(uplink.length, 1);
   assert.deepEqual(uplink[0].values.map((point) => point.snr), [9, 7]);
@@ -92,26 +92,24 @@ test('a direct ping of a shared hop keeps that hop visible', () => {
     { id: 'far', hops: ['ab12', 'cd34'], enabled: true },
     { id: 'direct', hops: ['ab12'], enabled: true },
   ];
-  const lines = buildSeries(targets, [], true);
+  const lines = buildSeries(targets, []);
   const uplink = lines.find((line) => line.hearerHex === 'ab12' && line.prevHex == null);
   assert.equal(isVisible(uplink, {}), true);
 });
 
-test('preview rounds use the same series rules', () => {
-  const session = previewSession(1_700_000_000_000);
-  const lines = buildSeries(session.targets, session.samples, session.roundTrip);
-  const repeaterFirst = lines.find((line) => line.hearerHex === 'ab12' && line.prevHex == null);
-  const repeaterFar = lines.find((line) => line.hearerHex === 'cd34' && line.prevHex === 'ab12');
-  const direct = lines.find((line) => line.hearerHex === 'ef56' && line.prevHex == null);
-  assert.equal(isVisible(repeaterFirst, {}), false);
-  assert.equal(isVisible(repeaterFar, {}), true);
-  assert.equal(repeaterFar.style, 'solid');
-  assert.equal(direct.style, 'solid');
-  const repeaterBack = lines.find((line) => line.hearerHex === 'ab12' && line.prevHex === 'cd34');
-  assert.equal(repeaterBack.style, 'dashed');
-  assert.equal(repeaterFirst.style, 'solid');
-  assert.notEqual(repeaterFar.style, repeaterBack.style);
-  assert.equal(repeaterFirst.values.length, 72);
-  assert.ok(repeaterFar.values.some((point) => point.snr == null));
-  assert.ok(repeaterFar.values.some((point) => typeof point.snr === 'number'));
+test('the dim sample follows the same series rules', () => {
+  const board = sampleBoard(1_700_000_000_000);
+  const lines = buildSeries(board.targets, board.samples);
+  const first = lines.find((line) => line.hearerHex === '2b7e' && line.prevHex == null);
+  const nova = lines.find((line) => line.hearerHex === '164a' && line.prevHex === '2b7e');
+  const back = lines.find((line) => line.hearerHex === '2b7e' && line.prevHex === '164a');
+  assert.equal(lines.filter((line) => line.hearerHex === '2b7e' && line.prevHex == null).length, 1);
+  assert.equal(isVisible(first, {}), false);
+  assert.equal(isVisible(nova, {}), true);
+  assert.equal(first.style, 'solid');
+  assert.equal(nova.style, 'solid');
+  assert.equal(back.style, 'dashed');
+  assert.equal(first.values.length, board.samples.length);
+  assert.ok(nova.values.some((point) => point.snr == null));
+  assert.ok(nova.values.some((point) => typeof point.snr === 'number'));
 });
